@@ -1,0 +1,607 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  BUYER
+  SELLER
+  ADMIN
+  COURIER
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  SOLD_OUT
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+}
+
+enum ListingIntent {
+  SELL
+  EXCHANGE
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELED
+}
+
+enum ChatMessageType {
+  TEXT
+  IMAGE
+}
+
+enum FeedAction {
+  VIEW
+  CLICK
+  FAVORITE
+  ADD_TO_CART
+  BUY
+  CHAT
+}
+
+enum ReportTargetType {
+  LISTING
+  PRODUCT
+  STORE
+  USER
+  MESSAGE
+}
+
+enum ReportReason {
+  SCAM
+  COUNTERFEIT
+  INAPPROPRIATE
+  SPAM
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  REJECTED
+}
+
+enum ModerationStatus {
+  ACTIVE
+  HIDDEN
+  REMOVED
+}
+
+enum VehicleType {
+  MOTO
+  CAR
+  VAN
+}
+
+enum CourierStatus {
+  OFFLINE
+  AVAILABLE
+  BUSY
+  SUSPENDED
+}
+
+enum DeliveryRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum DeliveryStatus {
+  ASSIGNED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum NotificationType {
+  CHAT_MESSAGE
+  ORDER_STATUS
+  PROMO
+  SYSTEM
+}
+
+model User {
+  id               String   @id @default(uuid())
+  email            String   @unique
+  phone            String?
+  firstName        String?
+  lastName         String?
+  address          String?
+  passwordHash     String
+  name             String
+  roles            Role[]   @default([BUYER])
+  avatarUrl        String?
+  isBanned         Boolean  @default(false)
+  bannedAt         DateTime?
+  banReason        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  stores            Store[]       @relation("StoreOwner")
+  reviews           Review[]
+  orders            Order[]
+  favorites         Favorite[]
+  storeFollows      StoreFollow[]
+  feedEvents        FeedEvent[]
+  chatThreadsBuyer  ChatThread[]  @relation("ChatBuyer")
+  chatThreadsSeller ChatThread[]  @relation("ChatSeller")
+  chatMessages      ChatMessage[] @relation("ChatSender")
+  reportsReported   Report[]      @relation("ReportReporter")
+  reportsResolved   Report[]      @relation("ReportResolver")
+  refreshTokens     RefreshToken[]
+  threadReads       ThreadRead[]
+  feedSeen          FeedSeen[]
+  notifications     Notification[]
+  deliveryLocations DeliveryLocation[]
+  presence         UserPresence?
+  blocksInitiated   Block[]       @relation("Blocker")
+  blocksReceived    Block[]       @relation("Blocked")
+  courierProfile    CourierProfile?
+  deliveriesAsCourier Delivery[]  @relation("CourierDeliveries")
+  deliveriesAsBuyer  Delivery[]   @relation("BuyerDeliveries")
+  deliveriesRequests DeliveryRequest[]
+  courierReviewsGiven CourierReview[] @relation("CourierReviewBuyer")
+  courierReviewsReceived CourierReview[] @relation("CourierReviewCourier")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ip        String?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Store {
+  id          String   @id @default(uuid())
+  ownerId     String
+  name        String
+  description String?
+  logoUrl     String?
+  bannerUrl   String?
+  location    String?
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User          @relation("StoreOwner", fields: [ownerId], references: [id])
+  products    Product[]
+  listings    Listing[]
+  followers   StoreFollow[]
+  promotions  Promotion[]
+  chatThreads ChatThread[]
+  deliveries  Delivery[]
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  nameFr    String
+  nameAr    String
+  parentId  String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+
+  parent   Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryParent")
+  products Product[]
+  exchangeListings Listing[] @relation("ExchangeCategory")
+
+  @@index([parentId, sortOrder])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  storeId     String
+  categoryId  String?
+  status      ProductStatus @default(ACTIVE)
+  title       String
+  description String?
+  price       Decimal  @db.Decimal(12, 2)
+  currency    String   @default("DZD")
+  stockQty    Int
+  sku         String?
+  attributes  Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  store      Store     @relation(fields: [storeId], references: [id])
+  category   Category? @relation(fields: [categoryId], references: [id])
+  images     ProductImage[]
+  listings   Listing[]
+  reviews    Review[]
+  orderItems OrderItem[]
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  productId String
+  keyMain   String?
+  keyThumb  String?
+  urlMain   String?
+  urlThumb  String?
+  url       String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id])
+}
+
+model Listing {
+  id                  String        @id @default(uuid())
+  productId           String
+  storeId             String
+  titleOverride       String?
+  descriptionOverride String?
+  status              ListingStatus @default(DRAFT)
+  isUsed              Boolean       @default(false)
+  conditionScore      Int?
+  intent              ListingIntent?
+  priceOverride       Decimal?      @db.Decimal(12, 2)
+  remark              String?
+  exchangeWanted      String?
+  exchangeCategoryId  String?
+  tags                String[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  product   Product    @relation(fields: [productId], references: [id])
+  store     Store      @relation(fields: [storeId], references: [id])
+  exchangeCategory Category? @relation("ExchangeCategory", fields: [exchangeCategoryId], references: [id])
+  favorites Favorite[]
+  feedEvents FeedEvent[]
+  seen      FeedSeen[]
+  moderation ListingModeration?
+
+  @@index([isUsed, intent])
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
+
+  @@unique([userId, listingId])
+}
+
+model StoreFollow {
+  id        String   @id @default(uuid())
+  userId    String
+  storeId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([userId, storeId])
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  productId String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  userId      String
+  status      OrderStatus @default(PENDING)
+  deliveryStatus DeliveryStatus?
+  totalAmount Decimal     @db.Decimal(12, 2)
+  currency    String      @default("DZD")
+  address     String?
+  phone       String?
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user  User       @relation(fields: [userId], references: [id])
+  items OrderItem[]
+  delivery Delivery?
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  productId String
+  qty       Int
+  unitPrice Decimal @db.Decimal(12, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model ChatThread {
+  id            String   @id @default(uuid())
+  buyerId       String
+  sellerId      String
+  storeId       String
+  lastMessageAt DateTime?
+  createdAt     DateTime @default(now())
+
+  buyer    User          @relation("ChatBuyer", fields: [buyerId], references: [id])
+  seller   User          @relation("ChatSeller", fields: [sellerId], references: [id])
+  store    Store         @relation(fields: [storeId], references: [id])
+  messages ChatMessage[]
+  reads    ThreadRead[]
+
+  @@unique([buyerId, sellerId, storeId])
+}
+
+model ChatMessage {
+  id        String          @id @default(uuid())
+  threadId  String
+  senderId  String
+  type      ChatMessageType @default(TEXT)
+  text      String?
+  imageUrl  String?
+  createdAt DateTime        @default(now())
+  readAt    DateTime?
+
+  thread ChatThread @relation(fields: [threadId], references: [id])
+  sender User       @relation("ChatSender", fields: [senderId], references: [id])
+}
+
+model ThreadRead {
+  id         String   @id @default(uuid())
+  threadId   String
+  userId     String
+  lastReadAt DateTime @default(now())
+
+  thread ChatThread @relation(fields: [threadId], references: [id])
+  user   User       @relation(fields: [userId], references: [id])
+
+  @@unique([threadId, userId])
+  @@index([userId])
+}
+
+model Report {
+  id             String          @id @default(uuid())
+  reporterId     String
+  targetType     ReportTargetType
+  targetId       String
+  reason         ReportReason
+  description    String?
+  status         ReportStatus    @default(OPEN)
+  createdAt      DateTime        @default(now())
+  resolvedAt     DateTime?
+  resolverId     String?
+  resolutionNote String?
+
+  reporter User  @relation("ReportReporter", fields: [reporterId], references: [id])
+  resolver User? @relation("ReportResolver", fields: [resolverId], references: [id])
+
+  @@index([reporterId, createdAt])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+model FeedEvent {
+  id        String     @id @default(uuid())
+  userId    String
+  listingId String
+  action    FeedAction
+  createdAt DateTime   @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([listingId, createdAt])
+}
+
+model FeedSeen {
+  id        String   @id @default(uuid())
+  userId    String
+  listingId String
+  seenAt    DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
+
+  @@unique([userId, listingId])
+  @@index([userId, seenAt])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([userId, isRead, createdAt])
+}
+
+model Block {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("Blocker", fields: [blockerId], references: [id])
+  blocked User @relation("Blocked", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+model CourierProfile {
+  userId         String        @id
+  vehicleType    VehicleType
+  phone          String
+  displayName    String
+  photoUrl       String?
+  status         CourierStatus @default(OFFLINE)
+  currentLat     Float?
+  currentLng     Float?
+  lastLocationAt DateTime?
+  ratingAvg      Float         @default(0)
+  ratingCount    Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([status])
+}
+
+model Delivery {
+  id            String         @id @default(uuid())
+  orderId       String         @unique
+  storeId       String
+  buyerId       String
+  courierId     String?
+  status        DeliveryStatus @default(ASSIGNED)
+  pickupAddress Json?
+  dropoffAddress Json?
+  pickupLat     Float?
+  pickupLng     Float?
+  dropoffLat    Float?
+  dropoffLng    Float?
+  assignedAt    DateTime?
+  pickedUpAt    DateTime?
+  deliveredAt   DateTime?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  order     Order  @relation(fields: [orderId], references: [id])
+  store     Store  @relation(fields: [storeId], references: [id])
+  buyer     User   @relation("BuyerDeliveries", fields: [buyerId], references: [id])
+  courier   User?  @relation("CourierDeliveries", fields: [courierId], references: [id])
+  requests  DeliveryRequest[]
+  locations DeliveryLocation[]
+  review    CourierReview?
+
+  @@index([storeId, createdAt])
+  @@index([buyerId, createdAt])
+  @@index([courierId, status])
+}
+
+model DeliveryRequest {
+  id          String                @id @default(uuid())
+  deliveryId  String
+  storeId     String
+  courierId   String
+  status      DeliveryRequestStatus @default(PENDING)
+  message     String?
+  createdAt   DateTime              @default(now())
+  respondedAt DateTime?
+  expiresAt   DateTime
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  courier  User     @relation(fields: [courierId], references: [id])
+
+  @@index([courierId, status])
+  @@index([deliveryId, status])
+}
+
+model DeliveryLocation {
+  id         String   @id @default(uuid())
+  deliveryId String
+  courierId  String
+  lat        Float
+  lng        Float
+  speed      Float?
+  heading    Float?
+  accuracy   Float?
+  createdAt  DateTime @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  courier  User     @relation(fields: [courierId], references: [id])
+
+  @@index([deliveryId, createdAt])
+}
+
+model CourierReview {
+  id         String   @id @default(uuid())
+  deliveryId String   @unique
+  buyerId    String
+  courierId  String
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id])
+  buyer    User     @relation("CourierReviewBuyer", fields: [buyerId], references: [id])
+  courier  User     @relation("CourierReviewCourier", fields: [courierId], references: [id])
+}
+
+model UserPresence {
+  userId       String   @id
+  lastSocketAt DateTime?
+  lastSeenAt   DateTime?
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model ListingModeration {
+  listingId String           @id
+  status    ModerationStatus @default(ACTIVE)
+  reason    String?
+  updatedAt DateTime         @updatedAt
+
+  listing Listing @relation(fields: [listingId], references: [id])
+}
+
+model Promotion {
+  id          String   @id @default(uuid())
+  storeId     String
+  title       String
+  description String?
+  discountPct Int?
+  startsAt    DateTime
+  endsAt      DateTime
+  createdAt   DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id])
+}
+
+

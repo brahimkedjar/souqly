@@ -1,0 +1,12 @@
+﻿node_modules
+apps/mobile
+apps/**/node_modules
+packages/**/node_modules
+uploads
+build
+dist
+.git
+.gitignore
+.vscode
+.idea
+*.log

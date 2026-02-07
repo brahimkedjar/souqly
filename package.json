@@ -1,0 +1,19 @@
+﻿{
+  "name": "beniourtilane_store",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run -w apps/api start:dev",
+    "dev:mobile": "cd apps/mobile && flutter run",
+    "prisma:generate": "npm run -w apps/api prisma:generate",
+    "prisma:migrate": "npm run -w apps/api prisma:migrate",
+    "seed:categories": "npm run -w apps/api seed:categories",
+    "seed:admin": "npm run -w apps/api seed:admin",
+    "build:shared": "npm run -w packages/shared build",
+    "test:api": "npm run -w apps/api test"
+  }
+}
+
